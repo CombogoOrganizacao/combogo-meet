@@ -1,3 +1,4 @@
+import "./suppress-dep0169";
 import "dotenv/config";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
