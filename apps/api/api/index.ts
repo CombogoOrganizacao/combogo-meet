@@ -1,6 +1,7 @@
 import './suppress-dep0169';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
+import { AllExceptionsFilter } from '../src/all-exceptions.filter';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import express from 'express';
 import { VercelRequest, VercelResponse } from '@vercel/node';
@@ -20,7 +21,8 @@ let cachedServer: any;
 async function bootstrap() {
   if (!cachedServer) {
     const app = await NestFactory.create(AppModule, new ExpressAdapter(server));
-    
+    app.useGlobalFilters(new AllExceptionsFilter());
+
     // Opcional: se sua API usa prefixo global, descomente a linha abaixo:
     // app.setGlobalPrefix('api');
 

@@ -10,8 +10,18 @@ import { Redis } from "@upstash/redis";
  */
 @Injectable()
 export class RedisService {
-  readonly client = new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL as string,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN as string,
-  });
+  readonly client: Redis;
+
+  constructor() {
+    const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
+    const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+
+    if (!url || !token) {
+      throw new Error(
+        "Upstash Redis não configurado: defina UPSTASH_REDIS_REST_URL e UPSTASH_REDIS_REST_TOKEN nas variáveis de ambiente da API (ex.: Vercel > Settings > Environment Variables)."
+      );
+    }
+
+    this.client = new Redis({ url, token });
+  }
 }
