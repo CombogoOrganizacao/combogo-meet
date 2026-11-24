@@ -6,7 +6,8 @@
     "deploy": "partykit deploy"
   },
   "dependencies": {
-    "partykit": "^0.0.115"
+    "partykit": "^0.0.115",
+    "partyserver": "^0.5.10"
   },
   "devDependencies": {
     "typescript": "5.5.4"
