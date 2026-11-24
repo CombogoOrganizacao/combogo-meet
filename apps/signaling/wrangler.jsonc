@@ -1,10 +1,13 @@
 {
-  "name": "my-chat",
+  "name": "meu-app-rooms",
   "main": "src/room.ts",
   "compatibility_date": "2025-06-01",
   "compatibility_flags": ["nodejs_compat"],
   "durable_objects": {
-    "bindings": [{ "name": "Main", "class_name": "Chat" }]
+    "bindings": [{ "name": "RoomServer", "class_name": "RoomServer" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RoomServer"] }],
+  "vars": {
+    "API_FINALIZE_URL": "https://combogo-meet.vercel.app/rooms/finalize"
   }
-  // + a seção "migrations" com new_sqlite_classes (confira no guia)
 }

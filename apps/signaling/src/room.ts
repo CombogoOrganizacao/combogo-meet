@@ -1,4 +1,14 @@
-import type * as Party from "partykit/server";
+import {
+  Server,
+  routePartykitRequest,
+  type Connection,
+  type WSMessage,
+} from "partyserver";
+
+type Env = {
+  RoomServer: DurableObjectNamespace;
+  API_FINALIZE_URL?: string;
+};
 
 type JoinMessage = { type: "join"; name: string };
 type LeaveMessage = { type: "leave" };
@@ -12,15 +22,18 @@ type IncomingMessage =
   | EndForAllMessage
   | ChatMessage;
 
-export default class RoomServer implements Party.Server {
-  constructor(readonly room: Party.Room) {}
-
+export class RoomServer extends Server<Env> {
   names = new Map<string, string>();
 
-  onConnect(conn: Party.Connection) {}
+  onMessage(sender: Connection, message: WSMessage) {
+    if (typeof message !== "string") return;
 
-  onMessage(message: string, sender: Party.Connection) {
-    const msg: IncomingMessage = JSON.parse(message);
+    let msg: IncomingMessage;
+    try {
+      msg = JSON.parse(message);
+    } catch {
+      return;
+    }
 
     switch (msg.type) {
       case "join": {
@@ -41,7 +54,7 @@ export default class RoomServer implements Party.Server {
       }
 
       case "signal": {
-        const target = this.room.getConnection(msg.to);
+        const target = this.getConnection(msg.to);
         target?.send(
           JSON.stringify({ type: "signal", from: sender.id, data: msg.data })
         );
@@ -50,14 +63,16 @@ export default class RoomServer implements Party.Server {
 
       case "chat": {
         const name = this.names.get(sender.id) ?? "Alguém";
-        this.broadcastAll({
-          type: "chat",
-          id: crypto.randomUUID(),
-          from: sender.id,
-          name,
-          text: msg.text,
-          ts: Date.now(),
-        });
+        this.broadcast(
+          JSON.stringify({
+            type: "chat",
+            id: crypto.randomUUID(),
+            from: sender.id,
+            name,
+            text: msg.text,
+            ts: Date.now(),
+          })
+        );
         break;
       }
 
@@ -67,15 +82,14 @@ export default class RoomServer implements Party.Server {
       }
 
       case "end-for-all": {
-        this.broadcastExcept(sender.id, { type: "room-closed" });
-        sender.send(JSON.stringify({ type: "room-closed" }));
+        this.broadcast(JSON.stringify({ type: "room-closed" }));
         this.notifyApiRoomClosed();
         break;
       }
     }
   }
 
-  onClose(conn: Party.Connection) {
+  onClose(conn: Connection) {
     this.handleDeparture(conn.id);
   }
 
@@ -88,30 +102,29 @@ export default class RoomServer implements Party.Server {
   }
 
   private broadcastExcept(exceptId: string, payload: unknown) {
-    const data = JSON.stringify(payload);
-    for (const conn of this.room.getConnections()) {
-      if (conn.id !== exceptId) conn.send(data);
-    }
-  }
-
-  private broadcastAll(payload: unknown) {
-    const data = JSON.stringify(payload);
-    for (const conn of this.room.getConnections()) {
-      conn.send(data);
-    }
+    this.broadcast(JSON.stringify(payload), [exceptId]);
   }
 
   private async notifyApiRoomClosed() {
-    const url = (this.room.env.API_FINALIZE_URL as string) || "";
+    const url = this.env.API_FINALIZE_URL || "";
     if (!url) return;
     try {
       await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomId: this.room.id }),
+        body: JSON.stringify({ roomId: this.name }),
       });
     } catch {
       // best-effort
     }
   }
 }
+
+export default {
+  async fetch(request: Request, env: Env) {
+    return (
+      (await routePartykitRequest(request, env)) ||
+      new Response("Not found", { status: 404 })
+    );
+  },
+} satisfies ExportedHandler<Env>;
