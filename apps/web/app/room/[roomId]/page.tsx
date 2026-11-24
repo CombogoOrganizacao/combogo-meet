@@ -30,6 +30,21 @@ type Tile = {
   isPresentation?: boolean;
 };
 
+function getMediaErrorMessage(error: unknown) {
+  if (error instanceof DOMException) {
+    if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
+      return "O acesso ao microfone foi bloqueado. Libere a permissão do microfone e tente novamente.";
+    }
+    if (error.name === "NotFoundError") {
+      return "Nenhum microfone foi encontrado neste dispositivo.";
+    }
+    if (error.name === "NotReadableError" || error.name === "AbortError") {
+      return "Não foi possível abrir o microfone. Verifique se outro aplicativo está usando o dispositivo.";
+    }
+  }
+  return "Não foi possível acessar o microfone. Verifique as permissões e tente novamente.";
+}
+
 export default function RoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
   const router = useRouter();
@@ -42,6 +57,7 @@ export default function RoomPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [desktopSourcesOpen, setDesktopSourcesOpen] = useState(false);
   const [roomIdCopied, setRoomIdCopied] = useState(false);
+  const [mediaError, setMediaError] = useState<string | null>(null);
 
   // ID do tile em destaque (ex: "local", "local-screen", peerId ou `${peerId}-screen`)
   const [pinnedId, setPinnedId] = useState<string | null>(null);
@@ -85,10 +101,28 @@ export default function RoomPage() {
   }, [router]);
 
   useEffect(() => {
-    if (displayName) media.start();
-    return () => media.stopAll();
+    if (!displayName) return;
+    let cancelled = false;
+    media.start().then(() => {
+      if (!cancelled) setMediaError(null);
+    }).catch((error: unknown) => {
+      if (!cancelled) setMediaError(getMediaErrorMessage(error));
+    });
+    return () => {
+      cancelled = true;
+      media.stopAll();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayName]);
+
+  async function retryMedia() {
+    setMediaError(null);
+    try {
+      await media.start();
+    } catch (error) {
+      setMediaError(getMediaErrorMessage(error));
+    }
+  }
 
   useEffect(() => {
     if (!media.localStream || !displayName) return;
@@ -249,23 +283,23 @@ export default function RoomPage() {
 
   if (ended) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-6 px-6 text-center">
+      <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-[#111213] px-6 text-center text-white">
         <Logo />
         <div className="space-y-2">
-          <h1 className="text-2xl font-semibold text-ink-900 dark:text-white">
+          <h1 className="text-2xl font-semibold text-white">
             A chamada terminou
           </h1>
-          <p className="text-ink-500 dark:text-ink-400">
+          <p className="max-w-md text-ink-300">
             A sala foi apagada. {downloadUrl ? "A transcrição está pronta:" : "Nenhum áudio foi transcrito."}
           </p>
         </div>
         <a
           href={downloadUrl ?? "#"}
-          className="rounded-lg bg-primary-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-primary-600"
+          className="rounded-lg bg-primary-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-primary-400"
         >
           Baixar transcrição (.docx)
         </a>
-        <a href="/" className="text-sm text-ink-400 underline hover:text-ink-600">
+        <a href="/" className="text-sm text-ink-400 underline underline-offset-4 hover:text-white">
           Voltar ao início
         </a>
       </main>
@@ -277,16 +311,17 @@ export default function RoomPage() {
   const galleryTiles = tiles.filter((t) => t.id !== pinnedId);
 
   return (
-    <main className="flex min-h-screen flex-col px-6">
-      <header className="flex items-center justify-between py-4">
+    <main className="flex min-h-screen flex-col overflow-hidden bg-white px-3 text-ink-900 sm:px-6 dark:bg-[#111213] dark:text-white">
+      <header className="flex items-center justify-between gap-3 border-b border-ink-200 py-4 dark:border-white/10">
         <Logo />
         <div className="flex items-center gap-3">
-          <span className="text-xs text-ink-400">
+          <span className="inline-flex items-center gap-2 rounded-full border border-ink-200 bg-ink-50 px-3 py-1.5 text-xs text-ink-600 dark:border-white/10 dark:bg-white/5 dark:text-ink-300">
+            <span className={`h-2 w-2 rounded-full ${peers.connected ? "bg-emerald-400" : "animate-pulse bg-primary-400"}`} />
             {peers.connected ? `${participants.length + 1} na sala` : "Conectando..."}
           </span>
           <button
             onClick={handleCopyRoomId}
-            className="flex items-center gap-1.5 rounded-lg border border-ink-200 px-2.5 py-1.5 text-xs text-ink-600 transition-colors hover:bg-ink-50 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"
+            className="flex items-center gap-1.5 rounded-lg border border-ink-200 bg-ink-50 px-2.5 py-1.5 text-xs text-ink-700 transition-colors hover:border-primary-500/50 hover:bg-ink-100 dark:border-white/10 dark:bg-white/5 dark:text-ink-200 dark:hover:bg-white/10"
             title="Copiar URL da chamada"
           >
             {roomIdCopied ? <Check size={14} /> : <Copy size={14} />}
@@ -296,15 +331,24 @@ export default function RoomPage() {
         </div>
       </header>
 
-      <div className="flex flex-1 gap-4 overflow-hidden">
+      {mediaError && (
+        <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+          <span>{mediaError}</span>
+          <button onClick={retryMedia} className="font-semibold underline underline-offset-2">
+            Tentar novamente
+          </button>
+        </div>
+      )}
+
+      <div className="flex min-h-0 flex-1 gap-4 overflow-hidden">
         {/* LAYOUT DINÂMICO BASEADO NO PIN */}
         <section
-          className={`flex flex-1 gap-4 py-4 ${hasPin ? "flex-col lg:flex-row" : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+          className={`min-h-0 flex-1 gap-4 py-4 ${hasPin ? "flex flex-col lg:flex-row" : "grid grid-cols-1 content-start sm:grid-cols-2 lg:grid-cols-3"
             }`}
         >
           {/* ÁREA DE DESTAQUE */}
           {pinnedTile && (
-            <div className="relative min-h-[50vh] flex-1 overflow-hidden rounded-2xl bg-ink-900/5 dark:bg-ink-900/20 lg:min-h-0">
+            <div className="relative min-h-[50vh] flex-1 overflow-hidden rounded-xl border border-white/10 bg-[#191a1b] lg:min-h-0">
               <VideoTile
                 stream={pinnedTile.stream}
                 name={pinnedTile.isLocal ? `${pinnedTile.name} (Fixado)` : `${pinnedTile.name} (Fixado)`}
@@ -314,7 +358,7 @@ export default function RoomPage() {
               />
               <button
                 onClick={() => setPinnedId(null)}
-                className="absolute top-3 right-3 rounded-lg bg-black/60 px-3 py-1.5 text-xs text-white backdrop-blur-md transition hover:bg-black"
+                className="absolute right-3 top-3 rounded-lg border border-white/10 bg-black/65 px-3 py-1.5 text-xs text-white backdrop-blur-md transition hover:bg-black"
               >
                 Desafixar 📌
               </button>
@@ -340,7 +384,7 @@ export default function RoomPage() {
                 />
                 <button
                   onClick={() => setPinnedId(t.id)}
-                  className="absolute top-2 right-2 rounded bg-black/50 px-2 py-1 text-[10px] text-white opacity-0 transition group-hover:opacity-100 hover:bg-black"
+                  className="absolute right-2 top-2 rounded-md border border-white/10 bg-black/60 px-2 py-1 text-[10px] text-white opacity-0 transition group-hover:opacity-100 hover:bg-black focus:opacity-100"
                   title="Fixar na tela principal"
                 >
                   📌 Fixar
@@ -360,7 +404,7 @@ export default function RoomPage() {
         )}
       </div>
 
-      <div className="sticky bottom-6 flex justify-center pb-6">
+      <div className="sticky bottom-3 flex justify-center pb-3 pt-1 sm:bottom-4 sm:pb-4">
         <CallControls
           isMicOn={media.isMicOn}
           isCameraOn={media.isCameraOn}
