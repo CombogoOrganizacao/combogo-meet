@@ -57,7 +57,7 @@ export function usePeerConnections(
   displayName: string,
   localStream: MediaStream | null
 ) {
-  const [remoteParticipants, setRemoteParticipants] = useState <Record<string, RemoteParticipant>>({});
+  const [remoteParticipants, setRemoteParticipants] = useState<Record<string, RemoteParticipant>>({});
   const [connected, setConnected] = useState(false);
   const [roomClosed, setRoomClosed] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -261,7 +261,8 @@ export function usePeerConnections(
     setChatMessages([]);
 
     const socket = new PartySocket({
-      host: process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:1999",
+      host: process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "localhost:8787",
+      party: "room-server",
       room: roomId,
     });
     socketRef.current = socket;
